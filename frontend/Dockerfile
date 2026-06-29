@@ -1,34 +1,31 @@
-# Stage 1 — build the app
-FROM dhi.io/node:26-dev AS build
+# -------------------------
+# Stage 1: Build frontend
+# -------------------------
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
 COPY package*.json ./
-
 RUN npm install --legacy-peer-deps
 
-# Install vite explicitly if not already in package.json
-RUN npm list vite > /dev/null 2>&1 || npm install --no-save vite@5.4.11
-
 COPY . .
-
 RUN npm run build
 
-# Stage 2 — distroless runtime (minimal, secure)
-FROM dhi.io/node:26
 
-WORKDIR /app
+# -------------------------
+# Stage 2: Production runtime (SECURE)
+# -------------------------
+FROM nginx:alpine
 
-# Copy built files from builder
-COPY --from=build /app/dist ./dist
+# Remove default nginx page
+RUN rm -rf /usr/share/nginx/html/*
 
-# Copy all node_modules from builder (includes vite)
-COPY --from=build /app/node_modules ./node_modules
+# Copy only build output
+COPY --from=build /app/dist /usr/share/nginx/html
 
-COPY vite.preview.config.js ./vite.config.js
+# Security headers (basic hardening)
+RUN printf 'server_tokens off;\n' > /etc/nginx/conf.d/security.conf
 
-EXPOSE 4173
+EXPOSE 80
 
-# Use exec form for proper signal handling
-ENTRYPOINT ["node", "--no-warnings"]
-CMD ["./node_modules/.bin/vite", "preview", "--host", "0.0.0.0", "--port", "4173"]
+CMD ["nginx", "-g", "daemon off;"]
